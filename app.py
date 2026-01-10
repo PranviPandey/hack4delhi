@@ -252,18 +252,65 @@ def generate_source_data(pm25, pm10, no2, so2, co, o3):
     return pd.DataFrame(list(sources.items()), columns=["Source", "Contribution %"])
 
 def get_health_recommendations(aqi):
+    """
+    Returns:
+    - general_message: str
+    - vulnerable_alert: str or None
+    """
+
     if aqi <= 50:
-        return "Air quality is satisfactory. Ideal for outdoor activities."
+        return (
+            "✅ **Good air quality.** No health impacts expected. Enjoy outdoor activities.",
+            None
+        )
+
     elif aqi <= 100:
-        return "Air quality is acceptable. Sensitive individuals should consider limiting prolonged outdoor exertion."
+        return (
+            "🟡 **Moderate air quality.** Most people can continue outdoor activities.",
+            "⚠️ **Sensitive individuals** (asthma, elderly) should watch for mild symptoms."
+        )
+
     elif aqi <= 150:
-        return "Members of sensitive groups may experience health effects. General public less likely to be affected."
+        return (
+            "🟠 **Unhealthy for sensitive groups.** Outdoor exertion may cause discomfort.",
+            "🚨 **Vulnerable populations** (children, elderly, pregnant women, people with asthma or heart disease) "
+            "should limit prolonged outdoor activity."
+        )
+
     elif aqi <= 200:
-        return "Everyone may begin to experience health effects. Sensitive groups may experience more serious effects."
+        return (
+            "🔴 **Unhealthy air quality.** Everyone may experience health effects.",
+            "🚨 **Vulnerable populations should avoid outdoor activity completely.** "
+            "Others should reduce outdoor exertion and wear masks if outside."
+        )
+
     elif aqi <= 300:
-        return "Health alert: everyone may experience serious health effects. Avoid outdoor activities."
+        return (
+            "🟣 **Very unhealthy air quality. Health alert!** Serious health effects possible.",
+            "🚨 **High risk for vulnerable populations.** Stay indoors, use air purifiers, "
+            "and seek medical help if symptoms (breathlessness, chest pain) appear."
+        )
+
     else:
-        return "Health warnings of emergency conditions. Everyone should avoid outdoor activities."
+        return (
+            "⚫ **Hazardous air quality – Emergency conditions.**",
+            "🚨 **Everyone, especially vulnerable populations, must stay indoors.** "
+            "Avoid all outdoor activity. Follow government emergency advisories."
+        )
+
+# def get_health_recommendations(aqi):
+#     if aqi <= 50:
+#         return "Air quality is satisfactory. Ideal for outdoor activities."
+#     elif aqi <= 100:
+#         return "Air quality is acceptable. Sensitive individuals should consider limiting prolonged outdoor exertion."
+#     elif aqi <= 150:
+#         return "Members of sensitive groups may experience health effects. General public less likely to be affected."
+#     elif aqi <= 200:
+#         return "Everyone may begin to experience health effects. Sensitive groups may experience more serious effects."
+#     elif aqi <= 300:
+#         return "Health alert: everyone may experience serious health effects. Avoid outdoor activities."
+#     else:
+#         return "Health warnings of emergency conditions. Everyone should avoid outdoor activities."
 
 def get_government_recommendations(ward_data):
     high_aqi_wards = ward_data[ward_data["AQI"] > 200]
@@ -325,7 +372,19 @@ if view_mode == "Citizen View":
     
     with col3:
         st.markdown("#### Health Recommendations")
-        st.info(get_health_recommendations(ward_info["AQI"]))
+
+        general_msg, vulnerable_msg = get_health_recommendations(ward_info["AQI"])
+
+        st.info(f"### General Population\n{general_msg}")
+        st.warning(f"### Vulnerable Population Alert\n{vulnerable_msg}")
+
+        st.caption(
+    "👥 *Vulnerable population includes: elderly, children under 5 years, pregnant women, "
+    "and individuals with asthma, lung or heart diseases.*"
+        )
+
+
+        # st.info(get_health_recommendations(ward_info["AQI"]))
     
     st.markdown("---")
     
