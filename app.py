@@ -8,8 +8,77 @@ import random
 import requests
 import math
 import re
+import base64
 # Page configuration
 st.set_page_config(page_title="Air Quality Dashboard", layout="wide", initial_sidebar_state="expanded")
+
+def set_sidebar_background(image_path: str = "sidebarbg.jpg"):
+    """Embed image as base64 and apply CSS to Streamlit sidebar."""
+    try:
+        with open(image_path, "rb") as f:
+            b64 = base64.b64encode(f.read()).decode()
+        css = f"""
+        <style>
+        [data-testid="stSidebar"] {{
+            background-image: url("data:image/jpg;base64,{b64}");
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            background-attachment: fixed;
+            position: relative;
+        }}
+        [data-testid="stSidebar"]::before {{
+            content: "";
+            position: absolute;
+            inset: 0;
+            background: rgba(0,0,0,0.35);
+            z-index: 0;
+        }}
+        [data-testid="stSidebar"] > div {{ position: relative; z-index: 1; }}
+        </style>
+        """
+        st.markdown(css, unsafe_allow_html=True)
+    except FileNotFoundError:
+        st.warning(f"Sidebar background not found: {image_path}")
+
+# add this CSS once (only affects elements with .impact-badge)
+st.markdown("""
+<style>
+.impact-badge, .impact-badge * {
+  color: #06203a !important;               /* dark blue */
+  -webkit-text-fill-color: #06203a !important;
+  font-weight: 700;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# call it before any sidebar content
+set_sidebar_background("sidebarbg.jpg")
+def set_page_background(image_path: str = "bg.jpg"):
+    """Embed image as base64 and set as Streamlit app background."""
+    try:
+        with open(image_path, "rb") as f:
+            b64 = base64.b64encode(f.read()).decode()
+        css = f"""
+        <style>
+        [data-testid="stAppViewContainer"] {{
+            background-image: url("data:image/jpg;base64,{b64}");
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+        }}
+        /* keep main content readable */
+        [data-testid="stAppViewContainer"] > .main {{
+            background-color: rgba(255,255,255,0.75);
+        }}
+        </style>
+        """
+        st.markdown(css, unsafe_allow_html=True)
+    except FileNotFoundError:
+        st.warning(f"Background image not found: {image_path}")
+
+# call before rendering the rest of the UI
+set_page_background("bg.jpg")
 
 WAQI_TOKEN = "c01d49af5769bc584fc51f7733c6fdcfedf47b3c"   # put your real token here
 CITY = "delhi"
@@ -904,13 +973,22 @@ def display_recommendations(recommendations, show_filters=True):
                     
                     with col2:
                         impact = rec.get('impact', 'Medium')
+                        style = "padding:10px;border-radius:6px;text-align:center;font-weight:bold"
                         if impact in ['High', 'Critical']:
-                            st.markdown(f"<div style='background-color:#d4edda;padding:10px;border-radius:5px;text-align:center'><b>Impact: {impact}</b></div>", unsafe_allow_html=True)
+                            st.markdown(
+                                f"<div class='impact-badge' style='background-color:rgb(219 221 191);{style}'>Impact: {impact}</div>",
+                                unsafe_allow_html=True
+                            )
                         elif impact in ['Medium', 'Medium-High']:
-                            st.markdown(f"<div style='background-color:#fff3cd;padding:10px;border-radius:5px;text-align:center'><b>Impact: {impact}</b></div>", unsafe_allow_html=True)
+                            st.markdown(
+                                f"<div class='impact-badge' style='background-color:rgb(128 102 19);{style}'>Impact: {impact}</div>",
+                                unsafe_allow_html=True
+                            )
                         else:
-                            st.markdown(f"<div style='background-color:#f8d7da;padding:10px;border-radius:5px;text-align:center'><b>Impact: {impact}</b></div>", unsafe_allow_html=True)
-            
+                            st.markdown(
+                                f"<div class='impact-badge' style='background-color:rgb(153 202 229);{style}'>Impact: {impact}</div>",
+                                unsafe_allow_html=True
+                            )
             st.markdown("")
         elif cat_key == "immediate" and selected_urgency <= 4:
             # Show message if immediate actions exist but are filtered out
