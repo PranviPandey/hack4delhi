@@ -45,8 +45,8 @@ def set_sidebar_background(image_path: str = "sidebarbg.jpg"):
 st.markdown("""
 <style>
 .impact-badge, .impact-badge * {
-  color: rgb(255, 255, 255) !important;               /* dark blue */
-  -webkit-text-fill-color: rgb(255, 255, 255) !important;
+  color: #06203a !important;               /* dark blue */
+  -webkit-text-fill-color: #06203a !important;
   font-weight: 700;
 }
 </style>
@@ -1063,15 +1063,15 @@ def display_recommendations(recommendations, show_filters=True):
                             else:
                                 st.markdown(f"**Expected Impact:** {rec['estimated_reduction']}")
                     
+                    
                     with col2:
                         impact = rec.get('impact', 'Medium')
                         if impact in ['High', 'Critical']:
-                            st.markdown(f"<div style='background-color:#d4edda;padding:10px;border-radius:5px;text-align:center'><b>Impact: {impact}</b></div>", unsafe_allow_html=True)
+                            st.markdown(f"<div class='impact-badge' style='background-color:#d4edda;padding:10px;border-radius:5px;text-align:center'><b>Impact: {impact}</b></div>", unsafe_allow_html=True)
                         elif impact in ['Medium', 'Medium-High']:
-                            st.markdown(f"<div style='background-color:#fff3cd;padding:10px;border-radius:5px;text-align:center'><b>Impact: {impact}</b></div>", unsafe_allow_html=True)
+                            st.markdown(f"<div class='impact-badge' style='background-color:#fff3cd;padding:10px;border-radius:5px;text-align:center'><b>Impact: {impact}</b></div>", unsafe_allow_html=True)                        
                         else:
-                            st.markdown(f"<div style='background-color:#f8d7da;padding:10px;border-radius:5px;text-align:center'><b>Impact: {impact}</b></div>", unsafe_allow_html=True)
-            
+                            st.markdown(f"<div class='impact-badge' style='background-color:#f8d7da;padding:10px;border-radius:5px;text-align:center'><b>Impact: {impact}</b></div>", unsafe_allow_html=True)
             st.markdown("")
         elif cat_key == "immediate" and selected_urgency <= 4:
             # Show message if immediate actions exist but are filtered out
