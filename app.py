@@ -298,7 +298,627 @@ def get_health_recommendations(aqi):
             "Avoid all outdoor activity. Follow government emergency advisories."
         )
 
-# def get_health_recommendations(aqi):
+def analyze_trend_direction(ward_data):
+    """Analyze if AQI is rising or falling for each ward"""
+    trends = {}
+    for ward in ward_data["Ward"]:
+        try:
+            trend_data = generate_trend_data(ward)
+            recent = trend_data["AQI"].tail(6).mean()  # last 6 hours
+            older = trend_data["AQI"].head(6).mean()   # first 6 hours
+            change = recent - older
+            
+            if change > 20:
+                trends[ward] = {"direction": "rising", "change": change}
+            elif change < -20:
+                trends[ward] = {"direction": "falling", "change": change}
+            else:
+                trends[ward] = {"direction": "stable", "change": change}
+        except:
+            trends[ward] = {"direction": "stable", "change": 0}
+    
+    return trends
+
+def get_dominant_pollutant(ward_info):
+    """Identify the most problematic pollutant"""
+    pollutants = {
+        "PM2.5": ward_info["PM2.5"] / 35.4,  # normalized to moderate threshold
+        "PM10": ward_info["PM10"] / 154,
+        "NO2": ward_info["NO2"] / 100,
+        "SO2": ward_info["SO2"] / 75,
+        "CO": ward_info["CO"] / 9,
+        "O3": ward_info["O3"] / 100
+    }
+    return max(pollutants, key=pollutants.get)
+
+def get_dominant_source(source_data):
+    """Get the primary pollution source"""
+    return source_data.loc[source_data["Contribution %"].idxmax(), "Source"]
+
+def generate_dynamic_recommendations(ward_data, selected_ward=None, filters=None):
+    """
+    Generate dynamic, prioritized recommendations based on real-time data.
+    
+    Parameters:
+    - ward_data: DataFrame with all ward information
+    - selected_ward: Optional specific ward for targeted recommendations
+    - filters: Dict with keys like 'urgency', 'timeframe', 'cost'
+    """
+    
+    recommendations = {
+        "immediate": [],
+        "short_term": [],
+        "medium_term": [],
+        "long_term": [],
+        "alerts": []
+    }
+    
+    # Analyze overall situation
+    avg_aqi = ward_data["AQI"].mean()
+    critical_wards = ward_data[ward_data["AQI"] > 200]
+    unhealthy_wards = ward_data[ward_data["AQI"] > 150]
+    moderate_wards = ward_data[(ward_data["AQI"] > 100) & (ward_data["AQI"] <= 150)]
+    
+    trends = analyze_trend_direction(ward_data)
+    rising_wards = [w for w, t in trends.items() if t["direction"] == "rising"]
+    # Ward-targeted recommendations for selected ward (citizen-focused)
+    if selected_ward:
+        try:
+            ward_row = ward_data[ward_data["Ward"] == selected_ward].iloc[0]
+            actions_added = set()
+            def add_rec(cat, rec):
+                if rec["action"] not in actions_added:
+                    recommendations[cat].append(rec)
+                    actions_added.add(rec["action"])
+
+            dom_pollutant = get_dominant_pollutant(ward_row)
+            src_df = generate_source_data(ward_row["PM2.5"], ward_row["PM10"], ward_row["NO2"], ward_row["SO2"], ward_row["CO"], ward_row["O3"])
+            dom_source = get_dominant_source(src_df)
+
+            # Personal / household immediate measures
+            if ward_row["AQI"] > 200:
+                add_rec("immediate", {
+                    "action": "Stay Indoors & Use High-efficiency Filters (HEPA)",
+                    "reason": f"Hazardous AQI in {selected_ward} ({ward_row['AQI']}). Protect vulnerable members at home.",
+                    "impact": "Critical",
+                    "timeframe": "Immediate",
+                    "estimated_reduction": "N/A (exposure reduction)"
+                })
+                add_rec("immediate", {
+                    "action": "Wear N95/N99 masks if going outside",
+                    "reason": "Very high particulate levels increase risk of respiratory issues",
+                    "impact": "High",
+                    "timeframe": "Immediate",
+                    "estimated_reduction": "N/A"
+                })
+            elif ward_row["AQI"] > 150:
+                add_rec("immediate", {
+                    "action": "Limit outdoor exertion; wear masks during necessary travel",
+                    "reason": f"Unhealthy AQI in {selected_ward} ({ward_row['AQI']})",
+                    "impact": "High",
+                    "timeframe": "Immediate",
+                    "estimated_reduction": "N/A"
+                })
+            elif ward_row["AQI"] > 100:
+                add_rec("short_term", {
+                    "action": "Sensitive individuals should reduce prolonged outdoor activity",
+                    "reason": f"Moderate AQI in {selected_ward} ({ward_row['AQI']})",
+                    "impact": "Medium",
+                    "timeframe": "Today",
+                    "estimated_reduction": "N/A"
+                })
+            else:
+                add_rec("medium_term", {
+                    "action": "Adopt cleaner cooking/fuel options at household level",
+                    "reason": "Proactive action to keep local pollution low",
+                    "impact": "Low-Medium",
+                    "timeframe": "1-4 weeks",
+                    "estimated_reduction": "5-10 AQI points (local)"
+                })
+
+            # Pollutant-specific local measures (short-term)
+            if dom_pollutant == "PM2.5":
+                add_rec("short_term", {
+                    "action": f"Intensify road cleaning and dust suppression in {selected_ward}",
+                    "reason": f"PM2.5 is dominant pollutant ({ward_row['PM2.5']} μg/m³)",
+                    "impact": "Medium",
+                    "timeframe": "4-12 hours",
+                    "estimated_reduction": "8-15 AQI points"
+                })
+            elif dom_pollutant == "NO2":
+                add_rec("short_term", {
+                    "action": f"Encourage staggered work hours and carpooling in {selected_ward}",
+                    "reason": "High NO2 indicates vehicular emissions as key contributor",
+                    "impact": "Medium",
+                    "timeframe": "1-2 days",
+                    "estimated_reduction": "5-12 AQI points"
+                })
+
+            # Source-specific community measures
+            if dom_source == "Vehicular Emissions":
+                add_rec("short_term", {
+                    "action": f"Promote public transport and carpooling campaigns in {selected_ward}",
+                    "reason": "Vehicular traffic is principal source in this ward",
+                    "impact": "Medium",
+                    "timeframe": "24-72 hours",
+                    "estimated_reduction": "8-15 AQI points"
+                })
+            elif dom_source == "Construction Dust":
+                add_rec("short_term", {
+                    "action": f"Enforce dust control at construction sites near {selected_ward}",
+                    "reason": "Construction dust contributes significantly to PM levels",
+                    "impact": "Medium",
+                    "timeframe": "4-24 hours",
+                    "estimated_reduction": "10-18 AQI points"
+                })
+        except Exception:
+            # keep function robust if selected_ward lookup fails
+            pass
+
+    # SMART ALERTS
+    if len(critical_wards) > 0:
+        recommendations["alerts"].append({
+            "message": f"🚨 **CRITICAL ALERT**: {len(critical_wards)} ward(s) have hazardous air quality (AQI > 200)",
+            "severity": "critical",
+            "wards": critical_wards["Ward"].tolist()
+        })
+    
+    if len(critical_wards) >= 5:
+        recommendations["alerts"].append({
+            "message": f"⚠️ **CITY-WIDE EMERGENCY**: {len(critical_wards)} wards critically affected. Declare public health emergency.",
+            "severity": "emergency",
+            "wards": []
+        })
+    
+    if len(rising_wards) >= 3:
+        recommendations["alerts"].append({
+            "message": f"📈 **TREND ALERT**: AQI rapidly rising in {len(rising_wards)} wards. Immediate intervention needed.",
+            "severity": "warning",
+            "wards": rising_wards
+        })
+    
+    # Vulnerable zone alerts (simulated - you can add actual school/hospital data)
+    high_risk_zones = ["Connaught Place", "Karol Bagh", "Laxmi Nagar"]
+    vulnerable_affected = [w for w in critical_wards["Ward"].tolist() if w in high_risk_zones]
+    if vulnerable_affected:
+        recommendations["alerts"].append({
+            "message": f"👶 **VULNERABLE ZONE ALERT**: High-density residential/commercial areas affected: {', '.join(vulnerable_affected)}",
+            "severity": "warning",
+            "wards": vulnerable_affected
+        })
+    
+    # IMMEDIATE ACTIONS (AQI > 200)
+    if len(critical_wards) > 0:
+        # Analyze dominant pollutants in critical wards
+        critical_pm25 = critical_wards["PM2.5"].mean()
+        critical_pm10 = critical_wards["PM10"].mean()
+        critical_no2 = critical_wards["NO2"].mean()
+        
+        recommendations["immediate"].append({
+            "action": "Implement Graded Response Action Plan (GRAP) Stage IV",
+            "reason": f"{len(critical_wards)} wards in hazardous category",
+            "impact": "High",
+            "timeframe": "0-2 hours",
+            "estimated_reduction": "30-50 AQI points"
+        })
+        
+        if critical_pm25 > 150 or critical_pm10 > 250:
+            recommendations["immediate"].append({
+                "action": "Ban all construction and demolition activities",
+                "reason": "Extremely high particulate matter levels",
+                "impact": "High",
+                "timeframe": "Immediate",
+                "estimated_reduction": "20-30 AQI points"
+            })
+            
+            recommendations["immediate"].append({
+                "action": "Deploy water sprinklers and anti-smog guns in all critical wards",
+                "reason": f"PM2.5: {critical_pm25:.0f} μg/m³, PM10: {critical_pm10:.0f} μg/m³",
+                "impact": "Medium",
+                "timeframe": "0-4 hours",
+                "estimated_reduction": "15-25 AQI points"
+            })
+        
+        if critical_no2 > 80:
+            recommendations["immediate"].append({
+                "action": "Implement odd-even vehicle scheme or complete traffic ban in critical zones",
+                "reason": f"High NO2 levels ({critical_no2:.0f} ppb) indicate vehicular pollution",
+                "impact": "High",
+                "timeframe": "0-6 hours",
+                "estimated_reduction": "25-40 AQI points"
+            })
+        
+        # Source-specific interventions for critical wards
+        for _, ward in critical_wards.iterrows():
+            source_data = generate_source_data(
+                ward["PM2.5"], ward["PM10"], ward["NO2"], 
+                ward["SO2"], ward["CO"], ward["O3"]
+            )
+            dominant_source = get_dominant_source(source_data)
+            
+            if dominant_source == "Vehicular Emissions" and ward["NO2"] > 70:
+                recommendations["immediate"].append({
+                    "action": f"Emergency traffic diversion in {ward['Ward']}",
+                    "reason": f"Vehicular emissions account for major pollution source (NO2: {ward['NO2']} ppb)",
+                    "impact": "High",
+                    "timeframe": "2-4 hours",
+                    "estimated_reduction": "20-35 AQI points"
+                })
+            
+            elif dominant_source == "Industrial Activity" and ward["SO2"] > 30:
+                recommendations["immediate"].append({
+                    "action": f"Temporary shutdown of non-essential industries in {ward['Ward']}",
+                    "reason": f"Industrial emissions dominant (SO2: {ward['SO2']} ppb)",
+                    "impact": "High",
+                    "timeframe": "4-8 hours",
+                    "estimated_reduction": "25-40 AQI points"
+                })
+            
+            elif dominant_source == "Construction Dust":
+                recommendations["immediate"].append({
+                    "action": f"Halt all construction in {ward['Ward']} and nearby areas",
+                    "reason": "Construction dust is primary contributor",
+                    "impact": "Medium-High",
+                    "timeframe": "1-2 hours",
+                    "estimated_reduction": "15-30 AQI points"
+                })
+        
+        recommendations["immediate"].append({
+            "action": "Issue emergency health advisory via SMS, TV, radio, and mobile apps",
+            "reason": "Protect public health during hazardous conditions",
+            "impact": "Critical",
+            "timeframe": "Immediate",
+            "estimated_reduction": "N/A (Health protection)"
+        })
+        
+        recommendations["immediate"].append({
+            "action": "Close schools and advise work-from-home in affected wards",
+            "reason": "Protect vulnerable populations",
+            "impact": "Critical",
+            "timeframe": "0-12 hours",
+            "estimated_reduction": "N/A (Exposure reduction)"
+        })
+    
+    # SHORT-TERM MEASURES (AQI 150-200)
+    if len(unhealthy_wards) > 0:
+        avg_unhealthy_aqi = unhealthy_wards["AQI"].mean()
+        
+        recommendations["short_term"].append({
+            "action": "Increase public transport frequency by 30%",
+            "reason": f"{len(unhealthy_wards)} wards have unhealthy air quality",
+            "impact": "Medium",
+            "timeframe": "4-8 hours",
+            "estimated_reduction": "10-20 AQI points"
+        })
+        
+        recommendations["short_term"].append({
+            "action": "Implement strict parking enforcement and congestion charges in hotspot areas",
+            "reason": "Reduce private vehicle usage",
+            "impact": "Medium",
+            "timeframe": "6-12 hours",
+            "estimated_reduction": "8-15 AQI points"
+        })
+        
+        # Analyze dominant pollutants
+        for _, ward in unhealthy_wards.iterrows():
+            dominant = get_dominant_pollutant(ward)
+            
+            if dominant == "PM2.5":
+                recommendations["short_term"].append({
+                    "action": f"Intensify road cleaning and dust suppression in {ward['Ward']}",
+                    "reason": f"PM2.5 is dominant pollutant ({ward['PM2.5']} μg/m³)",
+                    "impact": "Medium",
+                    "timeframe": "4-8 hours",
+                    "estimated_reduction": "10-18 AQI points"
+                })
+            
+            elif dominant == "NO2":
+                recommendations["short_term"].append({
+                    "action": f"Optimize traffic signals for better flow in {ward['Ward']}",
+                    "reason": f"High NO2 from vehicular emissions ({ward['NO2']} ppb)",
+                    "impact": "Low-Medium",
+                    "timeframe": "6-12 hours",
+                    "estimated_reduction": "5-12 AQI points"
+                })
+        
+        recommendations["short_term"].append({
+            "action": "Conduct industrial emission audits in high-pollution wards",
+            "reason": "Identify and penalize violators",
+            "impact": "Medium",
+            "timeframe": "12-24 hours",
+            "estimated_reduction": "12-20 AQI points"
+        })
+        
+        recommendations["short_term"].append({
+            "action": "Deploy mobile air quality monitoring units to pollution hotspots",
+            "reason": "Better real-time data for targeted interventions",
+            "impact": "Low (monitoring)",
+            "timeframe": "4-8 hours",
+            "estimated_reduction": "N/A (Data collection)"
+        })
+    
+    # MEDIUM-TERM STRATEGIES (AQI 100-150)
+    if len(moderate_wards) > 0 or avg_aqi > 100:
+        recommendations["medium_term"].append({
+            "action": "Enforce PUC (Pollution Under Control) checks at all major intersections",
+            "reason": "Prevent deterioration from moderate to unhealthy levels",
+            "impact": "Medium",
+            "timeframe": "1-3 days",
+            "estimated_reduction": "8-15 AQI points"
+        })
+        
+        recommendations["medium_term"].append({
+            "action": "Restrict entry of heavy commercial vehicles during peak hours",
+            "reason": "Reduce emissions from diesel vehicles",
+            "impact": "Medium",
+            "timeframe": "1-2 days",
+            "estimated_reduction": "10-18 AQI points"
+        })
+        
+        recommendations["medium_term"].append({
+            "action": "Launch public awareness campaigns on reducing personal emissions",
+            "reason": "Engage citizens in pollution control",
+            "impact": "Low-Medium",
+            "timeframe": "3-7 days",
+            "estimated_reduction": "5-10 AQI points"
+        })
+        
+        # Source-specific medium-term actions
+        high_cooking_wards = []
+        high_waste_burning = []
+        
+        for _, ward in ward_data.iterrows():
+            source_data = generate_source_data(
+                ward["PM2.5"], ward["PM10"], ward["NO2"], 
+                ward["SO2"], ward["CO"], ward["O3"]
+            )
+            
+            cooking_pct = source_data[source_data["Source"] == "Residential Cooking"]["Contribution %"].values
+            waste_pct = source_data[source_data["Source"] == "Waste Burning"]["Contribution %"].values
+            
+            if len(cooking_pct) > 0 and cooking_pct[0] > 20:
+                high_cooking_wards.append(ward["Ward"])
+            if len(waste_pct) > 0 and waste_pct[0] > 15:
+                high_waste_burning.append(ward["Ward"])
+        
+        if high_cooking_wards:
+            recommendations["medium_term"].append({
+                "action": f"Distribute LPG subsidies and promote electric cooking in: {', '.join(high_cooking_wards[:3])}",
+                "reason": "Residential cooking is significant contributor",
+                "impact": "Medium",
+                "timeframe": "7-14 days",
+                "estimated_reduction": "8-12 AQI points"
+            })
+        
+        if high_waste_burning:
+            recommendations["medium_term"].append({
+                "action": f"Increase waste collection frequency and enforcement patrols in: {', '.join(high_waste_burning[:3])}",
+                "reason": "Waste burning contributing to pollution",
+                "impact": "Medium",
+                "timeframe": "3-7 days",
+                "estimated_reduction": "6-10 AQI points"
+            })
+    
+    # LONG-TERM POLICIES (Always applicable)
+    recommendations["long_term"].append({
+        "action": "Expand metro network and dedicated bus corridors by 25%",
+        "reason": "Reduce dependency on private vehicles",
+        "impact": "High",
+        "timeframe": "6-18 months",
+        "estimated_reduction": "30-50 AQI points (sustained)"
+    })
+    
+    recommendations["long_term"].append({
+        "action": f"Plant 50,000 trees in wards with AQI > {avg_aqi:.0f}",
+        "reason": "Natural air purification and carbon sequestration",
+        "impact": "Medium-High",
+        "timeframe": "3-12 months",
+        "estimated_reduction": "15-25 AQI points (long-term)"
+    })
+    
+    recommendations["long_term"].append({
+        "action": "Mandate rooftop solar panels for all new commercial buildings",
+        "reason": "Reduce coal-based power generation",
+        "impact": "Medium",
+        "timeframe": "12-24 months",
+        "estimated_reduction": "10-20 AQI points"
+    })
+    
+    recommendations["long_term"].append({
+        "action": "Establish low-emission zones in high-traffic areas",
+        "reason": "Restrict polluting vehicles permanently",
+        "impact": "High",
+        "timeframe": "6-12 months",
+        "estimated_reduction": "20-35 AQI points"
+    })
+    
+    recommendations["long_term"].append({
+        "action": "Provide 50% subsidy on electric vehicle purchases for residents of high-pollution wards",
+        "reason": "Accelerate EV adoption",
+        "impact": "High",
+        "timeframe": "12-36 months",
+        "estimated_reduction": "25-40 AQI points (phased)"
+    })
+    
+    # Trend-based recommendations
+    if len(rising_wards) > 0:
+        recommendations["short_term"].append({
+            "action": f"Emergency intervention in rapidly deteriorating wards: {', '.join(rising_wards[:5])}",
+            "reason": "AQI showing upward trend",
+            "impact": "High",
+            "timeframe": "2-6 hours",
+            "estimated_reduction": "15-30 AQI points"
+        })
+    
+    # Apply filters if provided
+    if filters:
+        for category in recommendations:
+            if category == "alerts":
+                continue
+            filtered_recs = []
+            for rec in recommendations[category]:
+                include = True
+                
+                if filters.get("urgency"):
+                    urgency_map = {"immediate": 4, "short_term": 3, "medium_term": 2, "long_term": 1}
+                    if urgency_map.get(category, 0) < filters["urgency"]:
+                        include = False
+                
+                if filters.get("min_impact"):
+                    impact_map = {"Low": 1, "Low-Medium": 2, "Medium": 3, "Medium-High": 4, "High": 5, "Critical": 6}
+                    rec_impact = impact_map.get(rec.get("impact", "Low"), 1)
+                    if rec_impact < filters["min_impact"]:
+                        include = False
+                
+                if include:
+                    filtered_recs.append(rec)
+            
+            recommendations[category] = filtered_recs
+    
+    return recommendations
+def display_recommendations(recommendations, show_filters=True):
+    """Display recommendations with interactive filters"""
+    
+    # Display alerts first
+    if recommendations["alerts"]:
+        st.markdown("### 🚨 Critical Alerts")
+        for alert in recommendations["alerts"]:
+            if alert["severity"] == "critical":
+                st.error(f"**{alert['message']}**")
+                if alert["wards"]:
+                    st.caption(f"Affected wards: {', '.join(alert['wards'])}")
+            elif alert["severity"] == "emergency":
+                st.error(f"🆘 **{alert['message']}**")
+            else:
+                st.warning(f"{alert['message']}")
+                if alert["wards"]:
+                    st.caption(f"Affected areas: {', '.join(alert['wards'])}")
+        st.markdown("---")
+    
+    # Interactive filters
+    urgency_filter = "All"
+    impact_filter = "All"
+    show_impact_prediction = True
+    
+    if show_filters:
+        st.markdown("### 🎛️ Filter Recommendations")
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            urgency_filter = st.selectbox(
+                "Minimum Urgency",
+                ["All", "Long-term", "Medium-term", "Short-term", "Immediate"],
+                index=0,
+                key="urgency_filter"
+            )
+        
+        with col2:
+            impact_filter = st.selectbox(
+                "Minimum Impact",
+                ["All", "Low", "Medium", "High"],
+                index=0,
+                key="impact_filter"
+            )
+        
+        with col3:
+            show_impact_prediction = st.checkbox("Show AQI Reduction Estimates", value=True, key="impact_pred")
+        
+        st.markdown("---")
+    
+    # Apply filters to recommendations
+    urgency_map = {
+        "All": 0,
+        "Long-term": 1,
+        "Medium-term": 2,
+        "Short-term": 3,
+        "Immediate": 4
+    }
+    
+    impact_map = {
+        "All": 0,
+        "Low": 1,
+        "Low-Medium": 2,
+        "Medium": 2,
+        "Medium-High": 3,
+        "High": 4,
+        "Critical": 5
+    }
+    
+    selected_urgency = urgency_map.get(urgency_filter, 0)
+    selected_impact = impact_map.get(impact_filter, 0)
+    
+    # Filter function
+    def should_show_recommendation(rec, category, urgency_threshold, impact_threshold):
+        # Check urgency
+        category_urgency = {
+            "long_term": 1,
+            "medium_term": 2,
+            "short_term": 3,
+            "immediate": 4
+        }
+        
+        if category_urgency.get(category, 0) < urgency_threshold:
+            return False
+        
+        # Check impact
+        rec_impact = rec.get("impact", "Low")
+        rec_impact_value = impact_map.get(rec_impact, 1)
+        
+        if rec_impact_value < impact_threshold:
+            return False
+        
+        return True
+    
+    # Display recommendations by category
+    categories = [
+        ("immediate", "🚨 Immediate Actions (0-8 hours)", "error"),
+        ("short_term", "⚡ Short-term Measures (8 hours - 3 days)", "warning"),
+        ("medium_term", "🎯 Medium-term Strategies (3 days - 2 weeks)", "info"),
+        ("long_term", "🌱 Long-term Policies (1 month+)", "success")
+    ]
+    
+    for cat_key, cat_title, cat_style in categories:
+        # Filter recommendations for this category
+        filtered_recs = [
+            rec for rec in recommendations[cat_key]
+            if should_show_recommendation(rec, cat_key, selected_urgency, selected_impact)
+        ]
+        
+        if filtered_recs:
+            st.markdown(f"### {cat_title}")
+            
+            for i, rec in enumerate(filtered_recs, 1):
+                # Create expandable sections for each recommendation
+                with st.expander(f"**{i}. {rec['action']}**", expanded=(cat_key == "immediate" and i <= 2)):
+                    col1, col2 = st.columns([2, 1])
+                    
+                    with col1:
+                        st.markdown(f"**Reason:** {rec['reason']}")
+                        st.markdown(f"**Implementation Time:** {rec['timeframe']}")
+                        
+                        if show_impact_prediction and rec.get('estimated_reduction'):
+                            if "N/A" not in str(rec['estimated_reduction']):
+                                st.markdown(f"**Expected AQI Reduction:** {rec['estimated_reduction']}")
+                            else:
+                                st.markdown(f"**Expected Impact:** {rec['estimated_reduction']}")
+                    
+                    with col2:
+                        impact = rec.get('impact', 'Medium')
+                        if impact in ['High', 'Critical']:
+                            st.markdown(f"<div style='background-color:#d4edda;padding:10px;border-radius:5px;text-align:center'><b>Impact: {impact}</b></div>", unsafe_allow_html=True)
+                        elif impact in ['Medium', 'Medium-High']:
+                            st.markdown(f"<div style='background-color:#fff3cd;padding:10px;border-radius:5px;text-align:center'><b>Impact: {impact}</b></div>", unsafe_allow_html=True)
+                        else:
+                            st.markdown(f"<div style='background-color:#f8d7da;padding:10px;border-radius:5px;text-align:center'><b>Impact: {impact}</b></div>", unsafe_allow_html=True)
+            
+            st.markdown("")
+        elif cat_key == "immediate" and selected_urgency <= 4:
+            # Show message if immediate actions exist but are filtered out
+            if recommendations[cat_key] and not filtered_recs:
+                st.markdown(f"### {cat_title}")
+                st.info(f"ℹ️ {len(recommendations[cat_key])} immediate action(s) available. Adjust filters to view.")
+
+    # def get_health_recommendations(aqi):
 #     if aqi <= 50:
 #         return "Air quality is satisfactory. Ideal for outdoor activities."
 #     elif aqi <= 100:
@@ -312,34 +932,34 @@ def get_health_recommendations(aqi):
 #     else:
 #         return "Health warnings of emergency conditions. Everyone should avoid outdoor activities."
 
-def get_government_recommendations(ward_data):
-    high_aqi_wards = ward_data[ward_data["AQI"] > 200]
+# def get_government_recommendations(ward_data):
+#     high_aqi_wards = ward_data[ward_data["AQI"] > 200]
     
-    recommendations = []
+#     recommendations = []
     
-    if len(high_aqi_wards) > 0:
-        recommendations.append(f"🚨 **Immediate Action Required**: {len(high_aqi_wards)} ward(s) have AQI > 200")
-        recommendations.append("• Implement vehicle restrictions in affected areas")
-        recommendations.append("• Halt construction activities temporarily")
-        recommendations.append("• Increase water sprinkling on roads")
+#     if len(high_aqi_wards) > 0:
+#         recommendations.append(f"🚨 **Immediate Action Required**: {len(high_aqi_wards)} ward(s) have AQI > 200")
+#         recommendations.append("• Implement vehicle restrictions in affected areas")
+#         recommendations.append("• Halt construction activities temporarily")
+#         recommendations.append("• Increase water sprinkling on roads")
     
-    recommendations.extend([
-        "**Short-term Measures:**",
-        "• Deploy mobile air quality monitoring units",
-        "• Issue public health advisories via SMS/app notifications",
-        "• Activate anti-smog guns in high pollution zones",
-        "• Increase public transport frequency to reduce private vehicle usage",
-        "",
-        "**Long-term Policy Recommendations:**",
-        "• Expand green cover by 15% in high-pollution wards",
-        "• Mandate Euro VI emission standards for all vehicles",
-        "• Establish low emission zones in congested areas",
-        "• Promote electric vehicle adoption through subsidies",
-        "• Implement stricter industrial emission norms",
-        "• Create dedicated cycling lanes to encourage non-motorized transport"
-    ])
+#     recommendations.extend([
+#         "**Short-term Measures:**",
+#         "• Deploy mobile air quality monitoring units",
+#         "• Issue public health advisories via SMS/app notifications",
+#         "• Activate anti-smog guns in high pollution zones",
+#         "• Increase public transport frequency to reduce private vehicle usage",
+#         "",
+#         "**Long-term Policy Recommendations:**",
+#         "• Expand green cover by 15% in high-pollution wards",
+#         "• Mandate Euro VI emission standards for all vehicles",
+#         "• Establish low emission zones in congested areas",
+#         "• Promote electric vehicle adoption through subsidies",
+#         "• Implement stricter industrial emission norms",
+#         "• Create dedicated cycling lanes to encourage non-motorized transport"
+#     ])
     
-    return recommendations
+#     return recommendations
 
 # Sidebar
 st.sidebar.title("🌍 Air Quality Dashboard")
@@ -475,6 +1095,90 @@ if view_mode == "Citizen View":
     
     st.plotly_chart(fig, use_container_width=True)
 
+# Ward-specific recommendations for citizens
+    st.markdown("---")
+    st.subheader("💡 Personalized Recommendations for Your Ward")
+    
+    # Generate recommendations specific to this ward
+    ward_specific_data = ward_data[ward_data["Ward"] == selected_ward]
+    citizen_recs = generate_dynamic_recommendations(ward_data, selected_ward=selected_ward)
+    
+    # Prefer ward-targeted recommendations when available (fall back to city-level otherwise)
+    def _ward_filter(recs):
+        return [r for r in recs if selected_ward in r.get("reason", "") or selected_ward in r.get("action", "")]
+
+    ward_immediate = _ward_filter(citizen_recs["immediate"])
+    ward_short = _ward_filter(citizen_recs["short_term"])
+    ward_medium = _ward_filter(citizen_recs["medium_term"])
+
+    # Helper to choose local-first list
+    def _choose(local_list, global_list, limit=None):
+        if local_list:
+            return local_list[:limit] if limit else local_list
+        return global_list[:limit] if limit else global_list
+
+    immediate_to_show = _choose(ward_immediate, citizen_recs["immediate"], limit=3)
+    if immediate_to_show:
+        st.error("🚨 **Immediate Precautions (local-first):**")
+        for rec in immediate_to_show:
+            st.markdown(f"• **{rec['action']}**")
+            st.caption(f"💡 {rec['reason']}")
+            if rec.get('estimated_reduction') and "N/A" not in str(rec['estimated_reduction']):
+                st.caption(f"📉 Expected improvement: {rec['estimated_reduction']}")
+        st.markdown("")
+    
+    short_to_show = _choose(ward_short, citizen_recs["short_term"], limit=4)
+    if short_to_show:
+        st.warning("⚡ **Short-term Actions (local-first):**")
+        for rec in short_to_show:
+            st.markdown(f"• **{rec['action']}**")
+            st.caption(f"💡 {rec['reason']}")
+        st.markdown("")
+ 
+    medium_to_show = _choose(ward_medium, citizen_recs["medium_term"], limit=3)
+    if medium_to_show:
+        st.info("🎯 **Medium-term Improvements (local-first):**")
+        for rec in medium_to_show:
+            st.markdown(f"• **{rec['action']}**")
+            st.caption(f"💡 {rec['reason']}")
+        st.markdown("")
+    # Personal protective measures based on AQI
+    st.markdown("#### 🛡️ Personal Protection Measures")
+    
+    if ward_info["AQI"] > 200:
+        st.error("""
+        **Immediate Actions for You:**
+        - 😷 Wear N95/N99 masks when outdoors
+        - 🏠 Stay indoors with windows closed
+        - 💨 Use air purifiers if available
+        - 🚫 Avoid all outdoor exercise
+        - 💊 Keep prescribed medications handy if you have respiratory conditions
+        """)
+    elif ward_info["AQI"] > 150:
+        st.warning("""
+        **Recommended Precautions:**
+        - 😷 Wear masks when going outside
+        - 🏃 Limit outdoor physical activities
+        - 🪟 Keep windows closed during peak pollution hours
+        - 💨 Use air purifiers indoors
+        - 🚌 Use public transport instead of walking/cycling
+        """)
+    elif ward_info["AQI"] > 100:
+        st.info("""
+        **Suggested Measures:**
+        - 😷 Sensitive individuals should wear masks outdoors
+        - 🏃 Reduce prolonged outdoor exertion
+        - 🌳 Exercise in parks with more greenery
+        - 🚶 Avoid high-traffic areas during peak hours
+        """)
+    else:
+        st.success("""
+        **Enjoy the Good Air Quality:**
+        - ✅ Safe for all outdoor activities
+        - 🏃 Great day for exercise and sports
+        - 🌳 Good time to spend time in parks
+        """)
+
 else:  # Government View
     st.title("🏛️ Air Quality Monitoring - Government Dashboard")
     st.markdown("Comprehensive pollution monitoring and policy recommendations")
@@ -586,17 +1290,13 @@ else:  # Government View
     # Policy recommendations
     st.markdown("---")
     st.subheader("📋 Actionable Mitigation & Policy Recommendations")
-    
-    recommendations = get_government_recommendations(ward_data)
-    
-    for rec in recommendations:
-        if rec.startswith("🚨"):
-            st.error(rec)
-        elif rec.startswith("**"):
-            st.markdown(rec)
-        elif rec:
-            st.markdown(rec)
-    
+    # Generate dynamic recommendations
+    recommendations = generate_dynamic_recommendations(ward_data, selected_ward=selected_gov_ward)
+
+    # Display with interactive filters
+    # diagnostic: attempt to call and capture NameError / other failures
+    display_recommendations(recommendations, show_filters=True)
+   
     # Comparison table
     
     st.markdown("---")
