@@ -939,7 +939,6 @@ def generate_dynamic_recommendations(ward_data, selected_ward=None, filters=None
     return recommendations
 def display_recommendations(recommendations, show_filters=True):
     """Display recommendations with interactive filters"""
-    
     # Display alerts first
     if recommendations["alerts"]:
         st.markdown("### 🚨 Critical Alerts")
@@ -986,62 +985,47 @@ def display_recommendations(recommendations, show_filters=True):
         
         st.markdown("---")
   
-    urgency_label_map = {"All": 0, "Long-term": 1, "Medium-term": 2, "Short-term": 3, "Immediate": 4}
-    category_value = {"long_term": 1, "medium_term": 2, "short_term": 3, "immediate": 4}
-    impact_label_map = {"All": 0, "Low": 1, "Low-Medium": 2, "Medium": 3, "Medium-High": 4, "High": 5, "Critical": 6}
-
-    selected_urgency = urgency_label_map.get(urgency_filter, 0)
-    selected_impact = impact_label_map.get(impact_filter, 0)
-
-    def normalize_impact_value(impact_str):
-        """Normalize impact strings to numeric values"""
-        if impact_str is None:
-            return 0
-        s = str(impact_str).lower().strip()
-        
-        # Exact matches first
-        if s == "critical":
-            return 6
-        if s == "high":
-            return 5
-        if s == "medium-high" or s == "medium high":
-            return 4
-        if s == "medium":
-            return 3
-        if s == "low-medium" or s == "low medium":
-            return 2
-        if s == "low":
-            return 1
-        
-        # Partial matches as fallback
-        if "critical" in s:
-            return 6
-        if "high" in s and "medium" not in s:
-            return 5
-        if "medium" in s and "high" in s:
-            return 4
-        if "medium" in s and "low" not in s:
-            return 3
-        if "low" in s and "medium" in s:
-            return 2
-        if "low" in s:
-            return 1
-        
-        return 1
-
+    # Apply filters to recommendations
+    urgency_map = {
+        "All": 0,
+        "Long-term": 1,
+        "Medium-term": 2,
+        "Short-term": 3,
+        "Immediate": 4
+    }
+    
+    impact_map = {
+        "All": 0,
+        "Low": 1,
+        "Low-Medium": 2,
+        "Medium": 3,
+        "Medium-High": 4,
+        "High": 5,
+        "Critical": 6
+    }
+    
+    selected_urgency = urgency_map.get(urgency_filter, 0)
+    selected_impact = impact_map.get(impact_filter, 0)
+    
+    # Filter function (inclusive minimum semantics)
     def should_show_recommendation(rec, category, urgency_threshold, impact_threshold):
-        """Filter function - returns True to show recommendation"""
-        # Check urgency filter
-        if urgency_threshold > 0:
-            cat_urgency = category_value.get(category, 0)
-            if cat_urgency < urgency_threshold:
-                return False
+        # Map category -> urgency level (same scale as urgency_map but numeric)
+        category_urgency = {
+            "long_term": 1,
+            "medium_term": 2,
+            "short_term": 3,
+            "immediate": 4
+        }
         
-        # Check impact filter
-        if impact_threshold > 0:
-            rec_impact = normalize_impact_value(rec.get("impact", "Low"))
-            if rec_impact < impact_threshold:
-                return False
+        # If user selected a minimum urgency (>0), exclude less urgent categories
+        if urgency_threshold > 0 and category_urgency.get(category, 0) < urgency_threshold:
+            return False
+        
+        # If user selected a minimum impact (>0), exclude lower-impact recs
+        rec_impact = rec.get("impact", "Low")
+        rec_impact_value = impact_map.get(rec_impact, 1)
+        if impact_threshold > 0 and rec_impact_value < impact_threshold:
+            return False
         
         return True
     
@@ -1052,7 +1036,6 @@ def display_recommendations(recommendations, show_filters=True):
         ("medium_term", "🎯 Medium-term Strategies (3 days - 2 weeks)", "info"),
         ("long_term", "🌱 Long-term Policies (1 month+)", "success")
     ]
-    
     total_filtered_count = 0
     
     for cat_key, cat_title, cat_style in categories:
@@ -1061,8 +1044,6 @@ def display_recommendations(recommendations, show_filters=True):
             rec for rec in recommendations[cat_key]
             if should_show_recommendation(rec, cat_key, selected_urgency, selected_impact)
         ]
-        
-        total_filtered_count += len(filtered_recs)
         
         if filtered_recs:
             st.markdown(f"### {cat_title}")
@@ -1084,21 +1065,20 @@ def display_recommendations(recommendations, show_filters=True):
                     
                     with col2:
                         impact = rec.get('impact', 'Medium')
-                        style = "padding:10px;border-radius:6px;text-align:center;font-weight:bold"
                         if impact in ['High', 'Critical']:
-                            st.markdown(
-                                f"<div class='impact-badge' style='background-color:rgb(81 6 22);{style}'>Impact: {impact}</div>",
-                                unsafe_allow_html=True
-                            )
+                            st.markdown(f"<div style='background-color:#d4edda;padding:10px;border-radius:5px;text-align:center'><b>Impact: {impact}</b></div>", unsafe_allow_html=True)
                         elif impact in ['Medium', 'Medium-High']:
-                            st.markdown(
-                                f"<div class='impact-badge' style='background-color:rgb(97 76 10);{style}'>Impact: {impact}</div>",
-                                unsafe_allow_html=True
-                            )
-                        else:    st.markdown(
-                            f"<div class='impact-badge' style='background-color:rgb(59 130 246);{style}'>Impact: {impact}</div>",
-                            unsafe_allow_html=True  )
+                            st.markdown(f"<div style='background-color:#fff3cd;padding:10px;border-radius:5px;text-align:center'><b>Impact: {impact}</b></div>", unsafe_allow_html=True)
+                        else:
+                            st.markdown(f"<div style='background-color:#f8d7da;padding:10px;border-radius:5px;text-align:center'><b>Impact: {impact}</b></div>", unsafe_allow_html=True)
+            
             st.markdown("")
+        elif cat_key == "immediate" and selected_urgency <= 4:
+            # Show message if immediate actions exist but are filtered out
+            if recommendations[cat_key] and not filtered_recs:
+                st.markdown(f"### {cat_title}")
+                st.info(f"ℹ️ {len(recommendations[cat_key])} immediate action(s) available. Adjust filters to view.")
+
     
     # Show helpful message if filters excluded everything
     if total_filtered_count == 0 and (selected_urgency > 0 or selected_impact > 0):
