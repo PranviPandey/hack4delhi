@@ -320,52 +320,144 @@ def generate_source_data(pm25, pm10, no2, so2, co, o3):
     sources = {k: round((v / total) * 100, 1) for k, v in weights.items()}
     return pd.DataFrame(list(sources.items()), columns=["Source", "Contribution %"])
 
+
 def get_health_recommendations(aqi):
     """
+    CPCB-aligned health + action recommendations.
     Returns:
-    - general_message: str
-    - vulnerable_alert: str or None
+    - general_advice (str)
+    - vulnerable_advice (str)
     """
+
+    vulnerable_steps = (
+        "**Specific precautions for vulnerable groups:**\n"
+        "- **Asthma / respiratory patients:** Keep inhalers handy, avoid outdoor exposure, "
+        "and follow prescribed medication strictly.\n"
+        "- **Elderly:** Avoid outdoor movement, especially mornings and evenings; rest adequately.\n"
+        "- **Pregnant women:** Limit exposure to polluted air, avoid roadside areas, and stay indoors.\n"
+        "- **Children:** Avoid outdoor play; keep indoor air clean using purifiers or ventilation.\n"
+    )
 
     if aqi <= 50:
         return (
-            "✅ **Good air quality.** No health impacts expected. Enjoy outdoor activities.",
-            None
+            "🟢 **Low risk.** Air quality is good.\n\n"
+            "- Enjoy outdoor activities\n"
+            "- Walk, cycle, or use public transport\n"
+            "- Conserve energy and reduce emissions",
+            "No special precautions required for vulnerable populations."
         )
 
     elif aqi <= 100:
         return (
-            "🟡 **Moderate air quality.** Most people can continue outdoor activities.",
-            "⚠️ **Sensitive individuals** (asthma, elderly) should watch for mild symptoms."
-        )
-
-    elif aqi <= 150:
-        return (
-            "🟠 **Unhealthy for sensitive groups.** Outdoor exertion may cause discomfort.",
-            "🚨 **Vulnerable populations** (children, elderly, pregnant women, people with asthma or heart disease) "
-            "should limit prolonged outdoor activity."
+            "🟡 **Satisfactory air quality.** Minor health risk.\n\n"
+            "- Prefer public transport or carpooling\n"
+            "- Avoid unnecessary vehicle use\n"
+            "- Keep indoor spaces well-ventilated",
+            "⚠️ Vulnerable populations may experience minor breathing discomfort.\n"
+            "- Avoid prolonged or strenuous outdoor activity\n"
+            "- Monitor AQI regularly\n\n"
+            + vulnerable_steps
         )
 
     elif aqi <= 200:
         return (
-            "🔴 **Unhealthy air quality.** Everyone may experience health effects.",
-            "🚨 **Vulnerable populations should avoid outdoor activity completely.** "
-            "Others should reduce outdoor exertion and wear masks if outside."
+            "🟠 **Moderate air quality.** Health discomfort possible.\n\n"
+            "- Reduce outdoor physical exertion\n"
+            "- Avoid burning waste or leaves\n"
+            "- Improve indoor air using plants or ventilation",
+            "🚨 Vulnerable populations should take extra care.\n"
+            "- Avoid prolonged outdoor exposure\n"
+            "- Use N95/P100 masks if outdoors\n"
+            "- Use air purifiers indoors if available\n\n"
+            + vulnerable_steps
         )
 
     elif aqi <= 300:
         return (
-            "🟣 **Very unhealthy air quality. Health alert!** Serious health effects possible.",
-            "🚨 **High risk for vulnerable populations.** Stay indoors, use air purifiers, "
-            "and seek medical help if symptoms (breathlessness, chest pain) appear."
+            "🔴 **Poor air quality.** Health impacts likely.\n\n"
+            "- Avoid outdoor physical activity\n"
+            "- Stay indoors as much as possible\n"
+            "- Wear N95/P100 masks if stepping outside\n"
+            "- Use HEPA air purifiers",
+            "🚨 Vulnerable populations at high risk.\n"
+            "- Avoid all outdoor activities\n"
+            "- Remain indoors and keep activity levels low\n"
+            "- Seek medical advice if symptoms worsen\n\n"
+            + vulnerable_steps
+        )
+
+    elif aqi <= 400:
+        return (
+            "🟣 **Very poor air quality.** Serious health risk.\n\n"
+            "- Avoid outdoor exposure, especially mornings and evenings\n"
+            "- Keep doors and windows closed\n"
+            "- Use air purifiers continuously",
+            "🚨 Severe risk for vulnerable populations.\n"
+            "- Stay indoors at all times\n"
+            "- Avoid physical exertion completely\n"
+            "- Consult a doctor if breathing issues occur\n\n"
+            + vulnerable_steps
         )
 
     else:
         return (
-            "⚫ **Hazardous air quality – Emergency conditions.**",
-            "🚨 **Everyone, especially vulnerable populations, must stay indoors.** "
-            "Avoid all outdoor activity. Follow government emergency advisories."
+            "⚫ **Severe air quality – Emergency conditions.**\n\n"
+            "- Stay indoors with air purification\n"
+            "- Avoid all outdoor activities\n"
+            "- Follow government emergency advisories",
+            "🚨 **Extreme danger for vulnerable populations.**\n"
+            "- Remain indoors strictly\n"
+            "- Avoid physical activity\n"
+            "- Seek immediate medical attention if breathlessness, chest pain, or dizziness occurs\n\n"
+            + vulnerable_steps
         )
+
+# def get_health_recommendations(aqi):
+#     """
+#     Returns:
+#     - general_message: str
+#     - vulnerable_alert: str or None
+#     """
+
+#     if aqi <= 50:
+#         return (
+#             "✅ **Good air quality.** No health impacts expected. Enjoy outdoor activities.",
+#             None
+#         )
+
+#     elif aqi <= 100:
+#         return (
+#             "🟡 **Moderate air quality.** Most people can continue outdoor activities.",
+#             "⚠️ **Sensitive individuals** (asthma, elderly) should watch for mild symptoms."
+#         )
+
+#     elif aqi <= 150:
+#         return (
+#             "🟠 **Unhealthy for sensitive groups.** Outdoor exertion may cause discomfort.",
+#             "🚨 **Vulnerable populations** (children, elderly, pregnant women, people with asthma or heart disease) "
+#             "should limit prolonged outdoor activity."
+#         )
+
+#     elif aqi <= 200:
+#         return (
+#             "🔴 **Unhealthy air quality.** Everyone may experience health effects.",
+#             "🚨 **Vulnerable populations should avoid outdoor activity completely.** "
+#             "Others should reduce outdoor exertion and wear masks if outside."
+#         )
+
+#     elif aqi <= 300:
+#         return (
+#             "🟣 **Very unhealthy air quality. Health alert!** Serious health effects possible.",
+#             "🚨 **High risk for vulnerable populations.** Stay indoors, use air purifiers, "
+#             "and seek medical help if symptoms (breathlessness, chest pain) appear."
+#         )
+
+#     else:
+#         return (
+#             "⚫ **Hazardous air quality – Emergency conditions.**",
+#             "🚨 **Everyone, especially vulnerable populations, must stay indoors.** "
+#             "Avoid all outdoor activity. Follow government emergency advisories."
+#         )
 
 def analyze_trend_direction(ward_data):
     """Analyze if AQI is rising or falling for each ward"""
@@ -1067,24 +1159,67 @@ if view_mode == "Citizen View":
     with col2:
         st.metric("PM2.5 (μg/m³)", ward_info["PM2.5"])
         st.metric("PM10 (μg/m³)", ward_info["PM10"])
-    
+
+
     with col3:
-        st.markdown("#### Health Recommendations")
+        st.markdown("#### 🔍 AQI Summary")
+        st.markdown(
+        f"""
+        • **Dominant Pollutant:** {get_dominant_pollutant(ward_info)}  
+        • **Primary Source:** {get_dominant_source(
+            generate_source_data(
+                ward_info["PM2.5"], ward_info["PM10"], ward_info["NO2"],
+                ward_info["SO2"], ward_info["CO"], ward_info["O3"]
+            )
+        )}
+        """
+    )
+    
+    # with col3:
+    #     st.markdown("#### Health Recommendations")
 
-        general_msg, vulnerable_msg = get_health_recommendations(ward_info["AQI"])
+    #     general_msg, vulnerable_msg = get_health_recommendations(ward_info["AQI"])
 
-        st.info(f"### General Population\n{general_msg}")
-        st.warning(f"### Vulnerable Population Alert\n{vulnerable_msg}")
+    #     st.info(f"### General Population\n{general_msg}")
+    #     st.warning(f"### Vulnerable Population Alert\n{vulnerable_msg}")
 
-        st.caption(
-    "👥 *Vulnerable population includes: elderly, children under 5 years, pregnant women, "
-    "and individuals with asthma, lung or heart diseases.*"
-        )
+    #     st.caption(
+    # "👥 *Vulnerable population includes: elderly, children under 5 years, pregnant women, "
+    # "and individuals with asthma, lung or heart diseases.*"
+    #     )
 
 
         # st.info(get_health_recommendations(ward_info["AQI"]))
     
+    # st.markdown("---")
     st.markdown("---")
+    st.markdown("## 🩺 Health Recommendations")
+
+    general_msg, vulnerable_msg = get_health_recommendations(ward_info["AQI"])
+
+    # gen_col, vuln_col = st.columns(2)
+
+    #general population
+    st.info(
+        f"""
+        ### 👨‍👩‍👧‍👦 General Population
+        {general_msg}
+        """
+       )
+
+    #vulnerable population
+    st.warning(
+        f"""
+        ### ⚠️ Vulnerable Population
+        {vulnerable_msg}
+        """
+        )
+
+    st.caption(
+    "👥 *Vulnerable population includes: elderly, children under 5 years, "
+    "pregnant women, and individuals with asthma, lung or heart diseases.*"
+    )
+
     
     # AQI Trend
     col1, col2 = st.columns(2)
@@ -1132,6 +1267,8 @@ if view_mode == "Citizen View":
         )
         
         st.plotly_chart(fig, use_container_width=True)
+    
+
     
     # Pollutant breakdown
     st.subheader("🔬 Pollutant Levels")
