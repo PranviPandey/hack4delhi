@@ -138,6 +138,39 @@ def fetch_station_feed(uid):
         return out
     except Exception:
         return {}
+def allocate_budget(ward_data, total_budget_crore):
+    df = ward_data.copy()
+
+    # Severity score
+    df["Severity"] = df["AQI"].apply(lambda x: max(x - 50, 10))
+    df["Total Budget (₹ Cr)"] = (
+        df["Severity"] / df["Severity"].sum()
+    ) * total_budget_crore
+
+    # Priority tier
+    def priority(aqi):
+        if aqi >= 250:
+            return "🚨 Immediate"
+        elif aqi >= 200:
+            return "🔴 High"
+        else:
+            return "🟡 Medium"
+
+    df["Priority"] = df["AQI"].apply(priority)
+
+    # Budget split
+    df["Transport Control (₹ Cr)"] = (df["Total Budget (₹ Cr)"] * 0.35).round(2)
+    df["Dust Control (₹ Cr)"] = (df["Total Budget (₹ Cr)"] * 0.25).round(2)
+    df["Green Cover (₹ Cr)"] = (df["Total Budget (₹ Cr)"] * 0.20).round(2)
+    df["Monitoring (₹ Cr)"] = (df["Total Budget (₹ Cr)"] * 0.10).round(2)
+    df["Awareness (₹ Cr)"] = (df["Total Budget (₹ Cr)"] * 0.10).round(2)
+
+    # Impact estimate
+    df["Expected AQI Reduction"] = (
+        df["Total Budget (₹ Cr)"] * 0.25
+    ).clip(upper=25).round(1)
+
+    return df.round(2)
 
 def pm25_to_aqi(c):
     """Convert PM2.5 concentration (μg/m³) to US EPA AQI (integer)."""
@@ -1137,8 +1170,25 @@ def display_recommendations(recommendations, show_filters=True):
 # Sidebar
 st.sidebar.title("🌍 Air Quality Dashboard")
 view_mode = st.sidebar.radio("Select View", ["Citizen View", "Government View"])
-st.sidebar.markdown("---")
-st.sidebar.info("**Last Updated:** " + datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+st.sidebar.markdown("### ⏱️ Live Status")
+st.sidebar.info(
+    f"""
+    **City:** Delhi  
+    **Last Updated:** {datetime.now().strftime('%H:%M:%S')}  
+    **Data Source:** WAQI + OpenAQ  
+    """
+)
+
+# ---- AQI Legend (Optional, collapsible) ----
+with st.sidebar.expander("🎨 AQI Categories"):
+    st.markdown("""
+    🟢 **Good:** 0–50  
+    🟡 **Moderate:** 51–100  
+    🟠 **Unhealthy (Sensitive):** 101–150  
+    🔴 **Unhealthy:** 151–200  
+    🟣 **Very Unhealthy:** 201–300  
+    ⚫ **Hazardous:** 300+  
+    """)
 
 # Generate data
 ward_data = generate_ward_data()
@@ -1464,7 +1514,7 @@ else:  # Government View
             labels=category_counts.index,
             values=category_counts.values,
             hole=0.4,
-            marker=dict(colors=['#00E400', '#FFFF00', '#FF7E00', '#FF0000', '#8F3F97', '#7E0023'])
+            marker = dict(colors=['#8F3F97','#FF0000','#FF7E00','#FFFF00','#00E400'])
         )])
         
         fig.update_layout(height=400)
@@ -1504,7 +1554,28 @@ else:  # Government View
                     color="Contribution %", color_continuous_scale="Oranges")
         fig.update_layout(height=300, showlegend=False)
         st.plotly_chart(fig, use_container_width=True)
+        st.markdown("---")
+    st.subheader("💰 Ward-wise Pollution Mitigation Budget Allocation")
+
+    TOTAL_BUDGET = 500
+    budget_df = allocate_budget(ward_data, TOTAL_BUDGET)
+
+    st.caption("Priority-based budget allocation with action-level breakup and estimated impact")
     
+
+    st.dataframe(
+        budget_df[
+            [
+                "Ward", "AQI", "Priority",
+                "Total Budget (₹ Cr)",
+                "Transport Control (₹ Cr)",
+                "Dust Control (₹ Cr)",
+                "Green Cover (₹ Cr)",
+                "Expected AQI Reduction"
+            ]
+        ].sort_values("Priority"),
+        use_container_width=True
+    )
     # Policy recommendations
     st.markdown("---")
     st.subheader("📋 Actionable Mitigation & Policy Recommendations")
