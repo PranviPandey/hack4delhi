@@ -1561,7 +1561,7 @@ else:  # Government View
     budget_df = allocate_budget(ward_data, TOTAL_BUDGET)
 
     st.caption("Priority-based budget allocation with action-level breakup and estimated impact")
-    
+    st.caption(f"*Total Available Budget:* ₹ {TOTAL_BUDGET} Cr (Illustrative)")
 
     st.dataframe(
         budget_df[
