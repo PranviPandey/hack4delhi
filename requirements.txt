@@ -1,10 +1,6 @@
-streamlit 
-pandas
-numpy
-plotly
-datetime
-random
+streamlit>=1.30
+pandas>=2.0
+numpy>=1.26
+plotly>=5.18
 requests
-math
-re
-base64
+
